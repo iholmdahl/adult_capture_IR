@@ -1,3 +1,7 @@
+library(tidyverse)
+
+pop_data_baseline <- readRDS("pop_data_baseline")
+
 # ###########################################################################
 # ## sample from between 1 and 99 percent resistance
 # ##########################################################################
@@ -82,55 +86,5 @@ wide_results %>%
             corrected_larval_survival = mean(corrected_larval_survival)/100,
             survival_difference = mean(survival_difference)/100) -> summary_data
 
-summary_data_plot <- bind_rows(summary_data, summary_data)
-
-### look at results
-sample_comparison_scatter <- summary_data %>%
-  ggplot()+
-  geom_abline(intercept=0, slope=1, color="grey")+
-  geom_point(aes(x=resistance, y=corrected_larval_survival, color = "#009432"), alpha = 0.5, size=0.7) + 
-  geom_smooth(aes(x=resistance, y=corrected_larval_survival), method = "lm",
-               se = FALSE, color = "black", size=0.5) + 
-  geom_point(aes(x=resistance, y=corrected_adult_survival, color = "#0652DD"), alpha = 0.5, size=0.7) + 
-  geom_smooth(aes(x=resistance, y=corrected_adult_survival), method = "lm",
-              se = FALSE, color = "black", size=0.5) + 
-  scale_x_continuous(name = "Resistance", limits=c(0,1), labels = scales::percent, breaks = c(0:10/10))+
-  scale_y_continuous(name = "Survival", limits = c(0,1), labels = scales::percent, breaks = c(0:10/10))+
-  # annotate("text", x=.2, y=0.95, label= paste0("larval r^2 = ", round(larval_r.squared, digits=3))) + 
-  # annotate("text", x=.2, y=1, label= paste0("adult r^2 = ", round(adult_r.squared, digits=3))) + 
-  scale_colour_manual(name = 'Sample\nType', 
-                      values =c('#009432'='#009432','#0652DD'='#0652DD'), labels = c('larval','adult'))+
-  theme_bw() 
-
-sample_comparison_scatter
-
-
-
-difference.lm_baseline = lm(survival_difference ~ corrected_adult_survival, data=summary_data)
-difference_r.squared_baseline <- summary(difference.lm_baseline)$r.squared  
-
-summary_data$corrected_adult_survival2 = summary_data$corrected_adult_survival**2
-difference.lm_quad_baseline = lm(survival_difference ~ corrected_adult_survival + corrected_adult_survival2, data=summary_data)
-difference_r.squared_quad_baseline <- summary(difference.lm_quad_baseline)$r.squared  
-
-difference_scatter_quad <- summary_data %>%
-  mutate(predicted_resistance = difference.lm_quad_baseline$coefficients["(Intercept)"] 
-         + difference.lm_quad_baseline$coefficients["corrected_adult_survival"]*corrected_adult_survival 
-         + difference.lm_quad_baseline$coefficients["corrected_adult_survival2"]*corrected_adult_survival2) %>%
-  ggplot()+
-  geom_point(aes(x=corrected_adult_survival, y=-survival_difference), color="darkgrey", alpha = 0.7, size = 0.7) + 
-  geom_line(aes(x=corrected_adult_survival, y=-predicted_resistance), size=1)+
-  scale_x_continuous(limits=c(0,1), name = "Adult capture survival", 
-                     breaks = c(0:10/10), labels = scales::percent)+
-  scale_y_continuous(name = "Assay adjustment", minor_breaks = c(15:-6)/100, labels = scales::percent)+
-  theme_bw() + 
-  theme(panel.grid.major.x = element_line(colour = "black", size = 0.1)) +
-  geom_hline(yintercept=0, size=0.5)
-# annotate("text", x=0.1, y=0.14, label= paste0("r^2 = ", round(summary(difference.lm_quad)$r.squared, digits=3))) 
-
-scatterplots <- ggarrange(sample_comparison_scatter, difference_scatter_quad, widths = c(1.15,1), labels = "AUTO")
-scatterplots
-
-ggsave(scatterplots, file="scatterplots.png", unit="in", width = 9.6, height = 4)
-
+# write.csv(summary_data, "summary_data.csv")
 
