@@ -3,29 +3,21 @@ library(tidyr)
 library(stringr)
 library(viridis)
 
-setwd("/Users/Inga/Documents/GitHub/mosquitoIR")
-
-summary_data <- read.csv("summary_data.csv")
-pop_data_baseline <- readRDS("pop_data_baseline")
+summary_data <- read.csv("output/summary_data.csv")
+pop_data_baseline <- readRDS("results/population_main.rds")
 
 source("./sampling_functions.R")
-
-wide_results %>%
-  group_by(spatial_coefficient, coverage, resistance) %>%
-  summarize(corrected_adult_survival = mean(corrected_adult_survival)/100,
-            corrected_larval_survival = mean(corrected_larval_survival)/100,
-            survival_difference = mean(survival_difference)/100) -> summary_data
 
 equilibrium_data <- pop_data_baseline %>%
   group_by(coverage, spatial_coefficient) %>%
   filter(day==max(day)-1) 
 
-#######################################################
+################################################################################
 ##### paper figures: Fig 2 (heatmaps)
-#######################################################
+################################################################################
 
-time_cutoffs <- c(365*25)
-time_cutoff_labels <- c("25 years")
+time_cutoffs <- c(365*10)
+time_cutoff_labels <- paste0(time_cutoffs/365," years")
 
 pop_data_baseline %>% 
   filter(day %in% (time_cutoffs)) %>%
@@ -106,8 +98,10 @@ working_data %>%
   ggplot() +
   geom_tile(aes(x=spatial_coefficient, y=coverage, fill=(RR_POP+0.5*SR_POP)/POP)) +
   scale_x_continuous(name="Spatial clustering", breaks = c(0:10)/10) +
-  scale_y_continuous(name="Coverage", limits=c(0.025, 0.975), breaks = c(1:9)/10, labels = scales::percent)+
-  scale_fill_viridis(name="Resistance", option="D", breaks=seq(0,10)/10, labels = scales::percent, limits=c(0,1.0), oob=squish) +
+  scale_y_continuous(name="Coverage", limits=c(0.025, 0.975), breaks = c(1:9)/10, 
+                     labels = scales::percent)+
+  scale_fill_viridis_c(name="Resistance\nallele\nfrequency", option="D", breaks=seq(0,10)/10, 
+                     labels = scales::percent, limits=c(0,1.0), oob=scales::squish) +
   coord_flip() +
   theme(axis.text.x = element_text(angle=45, hjust=1),
         panel.background = element_blank(),
@@ -154,72 +148,121 @@ summary_data_low %>%
         panel.grid.minor = element_blank(),
         axis.line = element_blank()) -> arrow
 
-plot_w_arrow <- ggarrange(plot2, arrow, widths = c(10,2))
+plot_w_arrow <- ggpubr::ggarrange(plot2, arrow, widths = c(10,2))
 
-eq_fig <- ggarrange(plot, plot_w_arrow, widths = c(4.2,5), ncol=2, labels = "AUTO")
+eq_fig <- ggpubr::ggarrange(plot, plot_w_arrow, widths = c(4.2,5), ncol=2, labels = "AUTO")
 eq_fig
-ggsave(eq_fig, file="heatmaps_fig.tiff", unit="in", width = 10.4, height = 3.7)
+ggsave(eq_fig, file=paste0("output/heatmaps_fig_",time_cutoffs/365,"_years.tiff"), unit="in", width = 10.4, height = 3.7)
+ggsave(eq_fig, file=paste0("output/heatmaps_fig_",time_cutoffs/365,"_years.png"), unit="in", width = 10.4, height = 3.7)
 
 
-############################################################
+################################################################################
 ## paper figures: Fig 3A (sample comparison)
-############################################################
+################################################################################
+color_key <- c("Adult" = "#D41159", "Larval" = "#1A85FF")
 
-sample_comparison_scatter <- summary_data %>%
+comparison_scatter <- summary_data %>%
+  ungroup() %>%
+  slice_sample(n = round(nrow(summary_data)/50), replace = FALSE) %>%
   ggplot()+
   geom_abline(intercept=0, slope=1, color="grey")+
-  geom_vline(aes(xintercept=0.22), color="black", size=0.2) +
-  geom_point(aes(x=resistance, y=corrected_larval_survival, color = "#009432"), alpha = 0.7) + 
-  geom_smooth(aes(x=resistance, y=corrected_larval_survival), method = "lm",
-              se = FALSE, color = "black", size=0.5) + 
-  geom_point(aes(x=resistance, y=corrected_adult_survival, color = "#0652DD"), alpha = 0.7) + 
+  geom_point(aes(x=resistance, y=corrected_adult_survival, color = "Adult"), alpha = 0.3) + 
+  geom_point(aes(x=resistance, y=corrected_larval_survival, color = "Larval"), alpha = 0.3) + 
   geom_smooth(aes(x=resistance, y=corrected_adult_survival), method = "lm",
-              se = FALSE, color = "black", size=0.5) + 
-  scale_x_continuous(name = "Resistance", limits=c(0,1), labels = scales::percent, breaks = c(0:10/10))+
-  scale_y_continuous(name = "Survival", limits = c(0,1), labels = scales::percent)+
-  # annotate("text", x=.2, y=0.95, label= paste0("larval r^2 = ", round(larval_r.squared, digits=3))) + 
-  # annotate("text", x=.2, y=1, label= paste0("adult r^2 = ", round(adult_r.squared, digits=3))) + 
-  scale_colour_manual(name = 'Sample\nType', 
-                      values =c('#009432'='#009432','#0652DD'='#0652DD'), labels = c('larval','adult'))+
+              se = FALSE, color = "black", size=1) + 
+  geom_smooth(aes(x=resistance, y=corrected_larval_survival), method = "lm",
+              se = FALSE, color = "black", size=1) + 
+  scale_x_continuous(limits=c(0,1), labels = scales::percent, breaks = c(0:10/10))+
+  scale_y_continuous(limits = c(0,1), labels = scales::percent)+
+  scale_colour_manual(name="Sample\ntype",values=color_key) + 
+  labs(x = "Resistance allele frequency", y = "Modeled bioassay survival") +
   theme_bw() 
   
-sample_comparison_scatter
+comparison_scatter
 
-############################################################
+small_sample_scatter <- wide_results %>%
+  group_by(n, coverage, spatial_coefficient) %>%
+  slice_sample(n = round(nrow(wide_results)/300000)) %>%
+  mutate(n = paste0("Number sampled in each group = ", n)) %>%
+  group_by(n) %>%
+  # sample_n(nrow(wide_results)/10, replace = FALSE) %>%
+  ggplot()+
+  geom_abline(intercept=0, slope=1, color="grey")+
+  geom_point(aes(x=resistance, y=corrected_adult_survival, color = "Adult"),
+             size = 0.9, alpha = 0.3) +
+  geom_point(aes(x=resistance, y=corrected_larval_survival, color = "Larval"), 
+             size = 0.9, alpha = 0.3) + 
+  geom_smooth(aes(x=resistance, y=corrected_adult_survival), method = "lm",
+              se = FALSE, color = "black", size=1) +  #se = FALSE, 
+  geom_smooth(aes(x=resistance, y=corrected_larval_survival), method = "lm",
+              se = FALSE, color = "black", size=1) + 
+  scale_x_continuous(limits=c(0,1), labels = scales::percent, breaks = c(0:10/10))+
+  scale_y_continuous(limits = c(0,1), labels = scales::percent)+
+  scale_colour_manual(name="Sample\ntype",values=color_key) + 
+  # 
+  # scale_colour_manual(name = 'Sample\ntype', 
+  #                     values =c('#D41159'='#D41159',
+  #                               '#1A85FF'='#1A85FF'), 
+  #                     labels =c("Adult", 
+  #                               "Larval")) +
+  labs(x = "Resistance allele frequency", y = "Modeled bioassay survival") +
+  theme_bw() +
+  facet_wrap(~n)
+
+small_sample_scatter
+
+ggsave(small_sample_scatter, file=paste0("output/scatter_two_samplesizes.png"), 
+       unit="in", width = 8.6, height = 4)
+ggsave(small_sample_scatter, file=paste0("output/scatter_two_samplesizes.tiff"), 
+       unit="in", width = 8.6, height = 4)
+
+
+################################################################################
 ## paper figures: Fig 3B (difference scatter plot)
-############################################################
+################################################################################
+difference_data <- summarized_data %>% filter(n == 100)
+difference.lm = lm(survival_difference ~ corrected_adult_survival, 
+                   data=difference_data)
+# difference_r.squared <- summary(difference.lm)$r.squared  
 
-difference.lm = lm(survival_difference ~ corrected_adult_survival, data=combined_summary)
-difference_r.squared <- summary(difference.lm)$r.squared  
+difference_data$corrected_adult_survival2 = difference_data$corrected_adult_survival**2
+difference.lm_quad = lm(survival_difference ~ 
+                          corrected_adult_survival + corrected_adult_survival2, 
+                        data=difference_data)
+# difference_r.squared_quad <- summary(difference.lm_quad)$r.squared  
 
-combined_summary$corrected_adult_survival2 = combined_summary$corrected_adult_survival**2
-difference.lm_quad = lm(survival_difference ~ corrected_adult_survival + corrected_adult_survival2, data=combined_summary)
-difference_r.squared_quad <- summary(difference.lm_quad)$r.squared  
-
-difference_scatter_quad <- combined_summary %>%
+difference_scatter_quad <- difference_data %>%
+  ungroup() %>%
+  slice_sample(n = round(nrow(summary_data)/50), replace = FALSE) %>%
   mutate(predicted_resistance = difference.lm_quad$coefficients["(Intercept)"] 
          + difference.lm_quad$coefficients["corrected_adult_survival"]*corrected_adult_survival 
          + difference.lm_quad$coefficients["corrected_adult_survival2"]*corrected_adult_survival2) %>%
   ggplot()+
-  geom_point(aes(x=corrected_adult_survival, y=-survival_difference), color="darkgrey", alpha = 0.7) + 
+  geom_point(aes(x=corrected_adult_survival, y=-survival_difference), 
+             color="#73D055FF", alpha = 0.3) + 
   geom_line(aes(x=corrected_adult_survival, y=-predicted_resistance), size=1)+
-  scale_x_continuous(limits=c(0,1), name = "Adult capture survival", 
-                     breaks = c(0:10/10), labels = scales::percent)+
-  scale_y_continuous(name = "Assay adjustment", minor_breaks = c(15:-6)/100, labels = scales::percent)+
+  # scale_x_continuous(limits=c(0,1), name = "Modeled adult capture bioassay survival", 
+  #                    breaks = c(0:10/10), labels = scales::percent)+
+  scale_y_continuous(name = "Assay adjustment", minor_breaks = c(15:-6)/100, 
+                     labels = scales::percent)+
   theme_bw() + 
   theme(panel.grid.major.x = element_line(colour = "black", size = 0.1)) +
   geom_hline(yintercept=0, size=0.5)
-  # annotate("text", x=0.1, y=0.14, label= paste0("r^2 = ", round(summary(difference.lm_quad)$r.squared, digits=3))) 
-  
-scatterplots <- ggarrange(sample_comparison_scatter, difference_scatter_quad, widths = c(1.15,1), labels = "AUTO")
+
+difference_scatter_quad
+
+scatterplots <- ggpubr::ggarrange(comparison_scatter, 
+                                  difference_scatter_quad, 
+                                  widths = c(1.15,1), labels = "AUTO")
 scatterplots
 
-ggsave(scatterplots, file="scatterplots.png", unit="in", width = 9.6, height = 4)
+ggsave(scatterplots, file="output/scatterplots_test.png", unit="in", width = 9.6, height = 4)
+ggsave(scatterplots, file="output/scatterplots_test.tiff", unit="in", width = 9.6, height = 4)
 
 
-#######################################################
+################################################################################
 ##### paper figures: Fig 4 (sensitivity analyses)
-#######################################################
+################################################################################
 
 ## see file "sensitivity_analyses.R"
 
@@ -266,7 +309,11 @@ test_survival_plot <- survival.figure %>%
   scale_colour_manual(values = c("RR" = "#F8766D", "SR" = "#00BA38", "SS"= "#3B528B"))+
   theme_bw()
 
-mortality_plots <- ggarrange(control_survival_plot, test_survival_plot, ncol=2, nrow=1, common.legend = TRUE, legend = "bottom", labels = "AUTO")
+mortality_plots <- ggpubr::ggarrange(control_survival_plot, 
+                                     test_survival_plot, 
+                                     ncol=2, nrow=1, 
+                                     common.legend = TRUE, 
+                                     legend = "bottom", labels = "AUTO")
 mortality_plots
 ggsave("mortality_plot.png", mortality_plots, unit="in", width = 7, height = 3.5)
 
@@ -304,8 +351,49 @@ equilibrium_data %>%
        y = "Proportion feeding \nmosquitoes exposed per day") -> exposure_plot_25
 
 
-exposure_plot <- ggarrange(exposure_plot_1, exposure_plot_25, ncol=2, labels = "AUTO")
+exposure_plot <- ggpubr::ggarrange(exposure_plot_1, 
+                                   exposure_plot_25, 
+                                   ncol=2, labels = "AUTO")
 exposure_plot
 ggsave(exposure_plot, file="exposure_plot.tiff", unit="in", width = 7.8, height = 3)
 
 
+################################################################################
+##### paper figures: heatmap of time to 50% resistance
+################################################################################
+
+time_to_resistance <- pop_data_baseline %>% 
+  mutate(resistance = (0.5*SR_POP + RR_POP)/POP) %>%
+  filter(resistance >= 0.5) %>%
+  group_by(coverage, spatial_coefficient) %>%
+  filter(day == min(day))
+
+## make grey background
+
+background <- pop_data_baseline %>%
+  group_by(coverage, spatial_coefficient) %>%
+  filter(day == min(day))
+
+time_to_resistance %>%
+  ggplot() +
+  geom_tile(data = background, 
+            aes(x=spatial_coefficient, y=coverage), fill="grey") +
+  geom_tile(aes(x=spatial_coefficient, y=coverage, fill=sqrt(day/365))) +
+  scale_x_continuous(name="Spatial clustering", breaks = c(0:10)/10) +
+  scale_y_continuous(name="Coverage", limits=c(0.025, 0.975), breaks = c(1:9)/10, 
+                     labels = scales::percent)+
+  scale_fill_viridis_c(name="Years to 50%\nresistance", option="D", 
+                       limits = c(0, NA), 
+                       breaks = c(0, 1, 2, 3, 4), 
+                       labels = c(0, 1, 4, 9, 16)) +
+  coord_flip() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.background = element_blank(),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_blank(),
+        legend.key.height = unit(1, "cm"))
+
+ggsave(file=paste0("output/time_to_resistance.tiff"), unit="in", width = 6, height = 3.7)
+ggsave(file=paste0("output/time_to_resistance.png"), unit="in", width = 6, height = 3.7)

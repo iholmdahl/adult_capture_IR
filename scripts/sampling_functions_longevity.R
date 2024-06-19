@@ -3,7 +3,7 @@
 ############################################################################################################
 
 # fitness parameters
-h <- 0.5     # SR is intermediate between SS, RR
+h <- 0.5     # SR is intermediate between SS, RR - default
 
 # LLIN mortality
 mu_RR_ITN <- c(0.005, 0.219, 0.391)    ## high resistance (TIA) strain ITN mortality (Viana et al. 2017)
@@ -14,7 +14,7 @@ mu_SR_ITN <- c((mu_SS_ITN[1]*(1-h) + mu_RR_ITN[1]*h),   ## average weighted by h
                (mu_SS_ITN[3]*(1-h) + mu_RR_ITN[3]*h))  
 
 ## daily mortality parameters from data
-mortality <- read.csv( file="mortality.csv", header=TRUE, sep=',')
+mortality <- read.csv( file="input/mortality.csv", header=TRUE, sep=',')
 mu_SS_eggs <- 0.2
 mu_SS_pupae <- 0.25
 mu_SS_E0 <- mortality[,2]
@@ -24,7 +24,7 @@ mu_SS_E2 <- mortality[,2]
 
 mu_RR_eggs <- 0.2
 mu_RR_pupae <- 0.25
-mu_RR_E0 <- mortality[,3]
+mu_RR_E0 <- mortality[,2]
 RR_survival <- 1-mu_RR_E0
 mu_RR_E1 <- mortality[,4]
 mu_RR_E2 <- mortality[,4]
@@ -107,9 +107,6 @@ agebased_ageonly <- c(mu_SS_E0[1:26], mu_SS_E0[4:26], mu_SS_E0[8:26], mu_SR_E0[1
 sampling.mortality[4,] <- (1-agebased_ageonly)*(1-sampling.mortality[4,])
 
 
-
-
-
 construct.pop <- function(compartments){
   pop <- c()
   for(x in 1:length(compartments)){
@@ -117,8 +114,6 @@ construct.pop <- function(compartments){
   }
   return(pop)
 }
-
-
 
 resistance.assay <- function(sample.type, ## i.e. adult or larval
                              Coverage,    ## insecticde coverage (not p)
@@ -166,7 +161,6 @@ resistance.assay <- function(sample.type, ## i.e. adult or larval
   return(observed.survival)
 }
 
-
 control.assay <- function(sample.type, ## i.e. adult or larval
                           Coverage,    ## insecticde coverage (not p)
                           n,     ## number of mosquitoes per sample
@@ -213,8 +207,6 @@ control.assay <- function(sample.type, ## i.e. adult or larval
 }
 
 
-
-
 ## Abbott's control adjustment
 control.adjustment <- function(test_survival, control_survival){
   
@@ -223,9 +215,6 @@ control.adjustment <- function(test_survival, control_survival){
   return(adjusted_survival)
   
 }
-
-
-
 
 
 malaria.prevalence <- function(coverage, resistance, population.list, day){
@@ -237,9 +226,6 @@ malaria.prevalence <- function(coverage, resistance, population.list, day){
   }
   return(prevalence)
 }
-
-
-
 
 
 age.distribution <- function(coverage, R.freq, population.list, cutoff.matrix, day){
