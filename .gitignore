@@ -1,3 +1,5 @@
 
 *.csv
 *.rds
+*.png
+*.tiff
