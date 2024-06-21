@@ -3,3 +3,5 @@
 *.rds
 archive/
 output/
+.DS_Store
+*.png
