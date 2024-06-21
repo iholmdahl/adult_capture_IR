@@ -3,96 +3,15 @@ library(tidyr)
 library(stringr)
 library(viridis)
 
-summary_data <- read.csv("output/summary_data.csv")
+summary_data <- readr::read_csv("output/summary_data.csv")
 pop_data_baseline <- readRDS("results/population_main.rds")
+working_data <- readr::read_csv("output/fig2_data.csv")
 
 source("./sampling_functions.R")
 
-equilibrium_data <- pop_data_baseline %>%
-  group_by(coverage, spatial_coefficient) %>%
-  filter(day==max(day)-1) 
-
 ################################################################################
-##### paper figures: Fig 2 (heatmaps)
+##### Fig 2 (heatmaps)
 ################################################################################
-
-time_cutoffs <- c(365*10)
-time_cutoff_labels <- paste0(time_cutoffs/365," years")
-
-pop_data_baseline %>% 
-  filter(day %in% (time_cutoffs)) %>%
-  mutate(resistance = (0.5*SR_POP + RR_POP)/POP) -> non_equilibrium_sample
-
-nrow(non_equilibrium_sample)
-
-## then run sampling functions
-assay_results_low <- NULL
-control_results_low <- NULL
-
-for(i in 1:nrow(non_equilibrium_sample)){
-  
-  working_data <- non_equilibrium_sample[i,]
-  c <- working_data$coverage
-  s <- working_data$spatial_coefficient
-  
-  assay_results_low <- rbind(assay_results_low, resistance.assay(sample.type="adult", c, 100, 100, working_data))
-  assay_results_low <- rbind(assay_results_low, resistance.assay(sample.type="larval", c, 100, 100, working_data))
-  
-  control_results_low <- rbind(control_results_low, control.assay(sample.type="adult", c, 100, 100, working_data))
-  control_results_low <- rbind(control_results_low, control.assay(sample.type="larval", c, 100, 100, working_data))
-  
-}
-
-## group_by coverage, spatial_structure and sample type to summarize mean, variance
-assay_results_low %>%
-  rowid_to_column("ID") %>%
-  rename(test_survival = survival) %>%
-  select(-c(test))-> assay_results_low
-
-control_results_low %>%
-  rowid_to_column("ID") %>%
-  rename(control_survival = survival) %>%
-  select(-c(test)) -> control_results_low
-
-full_results_low <- full_join(assay_results_low, control_results_low)
-
-full_results_low %>% 
-  group_by(spatial_coefficient, coverage, sample) %>%
-  summarize(test_survival = mean(test_survival), 
-            control_survival = mean(control_survival),
-            resistance = mean(resistance)) -> assay_summary_low
-
-## next use abbot correction to get means
-full_results_low$corrected_survival<- mapply(control.adjustment, 100*full_results_low$test_survival, 100*full_results_low$control_survival)
-
-## then get difference between larval and adult results
-full_results_low %>% 
-  filter(sample=="adult") %>%
-  select(-c("ID", "sample")) %>%
-  rowid_to_column("ID") %>%
-  rename(control_adult_survival = control_survival,
-         test_adult_survival = test_survival,
-         corrected_adult_survival = corrected_survival) -> temp
-
-full_results_low %>% 
-  filter(sample=="larval") %>%
-  select(-c("ID", "sample")) %>%
-  rowid_to_column("ID") %>%
-  rename(control_larval_survival = control_survival,
-         test_larval_survival = test_survival,
-         corrected_larval_survival = corrected_survival) -> temp2
-
-wide_results_low <- full_join(temp, temp2) %>%
-  mutate(survival_difference = corrected_adult_survival - corrected_larval_survival)
-
-wide_results_low %>%
-  group_by(spatial_coefficient, coverage, resistance) %>%
-  summarize(corrected_adult_survival = mean(corrected_adult_survival)/100,
-            corrected_larval_survival = mean(corrected_larval_survival)/100,
-            survival_difference = mean(survival_difference)/100) -> summary_data_low
-
-working_data <- non_equilibrium_sample %>%
-  group_by(coverage, spatial_coefficient)
 
 working_data %>%
   ggplot() +
@@ -155,48 +74,39 @@ eq_fig
 ggsave(eq_fig, file=paste0("output/heatmaps_fig_",time_cutoffs/365,"_years.tiff"), unit="in", width = 10.4, height = 3.7)
 ggsave(eq_fig, file=paste0("output/heatmaps_fig_",time_cutoffs/365,"_years.png"), unit="in", width = 10.4, height = 3.7)
 
+################################################################################
+## paper figures: Alt version of figure 2 is just the right panel, add contour line separately
+################################################################################
+
+plot_w_arrow <- ggpubr::ggarrange(plot2_viridis, arrow, widths = c(10,2))
+
+ggsave(plot_w_arrow, file=paste0("output/alt_figure_2_viridis.tiff"), unit="in", width = 6, height = 4, bg = "white")
+ggsave(plot_w_arrow, file=paste0("output/alt_figure_2.pdf"), unit="in", width = 6, height = 4, bg = "white")
+ggsave(plot_w_arrow, file=paste0("output/alt_figure_2.png"), unit="in", width = 6, height = 3.7, bg = "white")
+
 
 ################################################################################
 ## paper figures: Fig 3A (sample comparison)
 ################################################################################
 color_key <- c("Adult" = "#D41159", "Larval" = "#1A85FF")
 
-comparison_scatter <- summary_data %>%
-  ungroup() %>%
-  slice_sample(n = round(nrow(summary_data)/50), replace = FALSE) %>%
-  ggplot()+
-  geom_abline(intercept=0, slope=1, color="grey")+
-  geom_point(aes(x=resistance, y=corrected_adult_survival, color = "Adult"), alpha = 0.3) + 
-  geom_point(aes(x=resistance, y=corrected_larval_survival, color = "Larval"), alpha = 0.3) + 
-  geom_smooth(aes(x=resistance, y=corrected_adult_survival), method = "lm",
-              se = FALSE, color = "black", size=1) + 
-  geom_smooth(aes(x=resistance, y=corrected_larval_survival), method = "lm",
-              se = FALSE, color = "black", size=1) + 
-  scale_x_continuous(limits=c(0,1), labels = scales::percent, breaks = c(0:10/10))+
-  scale_y_continuous(limits = c(0,1), labels = scales::percent)+
-  scale_colour_manual(name="Sample\ntype",values=color_key) + 
-  labs(x = "Resistance allele frequency", y = "Modeled bioassay survival") +
-  theme_bw() 
-  
-comparison_scatter
-
-small_sample_scatter <- wide_results %>%
-  group_by(n, coverage, spatial_coefficient) %>%
-  slice_sample(n = round(nrow(wide_results)/300000)) %>%
+comparison_scatter <- wide_results %>%
+  filter(n == 100) %>%
+  group_by(coverage, spatial_coefficient) %>%
+  slice_sample(n = round(nrow(wide_results)/200000)) %>%
   mutate(n = paste0("Number sampled in each group = ", n)) %>%
   group_by(n) %>%
-  # sample_n(nrow(wide_results)/10, replace = FALSE) %>%
   ggplot()+
   geom_abline(intercept=0, slope=1, color="grey")+
-  geom_point(aes(x=resistance, y=corrected_adult_survival, color = "Adult"),
+  geom_point(aes(x=resistance, y=adult_resistance, color = "Adult"),
              size = 0.9, alpha = 0.3) +
-  geom_point(aes(x=resistance, y=corrected_larval_survival, color = "Larval"), 
+  geom_point(aes(x=resistance, y=larval_resistance, color = "Larval"), 
              size = 0.9, alpha = 0.3) + 
-  geom_smooth(aes(x=resistance, y=corrected_adult_survival), method = "lm",
+  geom_smooth(aes(x=resistance, y=adult_resistance), method = "lm",
               se = FALSE, color = "black", size=1) +  #se = FALSE, 
-  geom_smooth(aes(x=resistance, y=corrected_larval_survival), method = "lm",
+  geom_smooth(aes(x=resistance, y=larval_resistance), method = "lm",
               se = FALSE, color = "black", size=1) + 
-  scale_x_continuous(limits=c(0,1), labels = scales::percent, breaks = c(0:10/10))+
+  scale_x_continuous(limits=c(0,1), labels = scales::percent, breaks = seq(0, 1, by = .2))+
   scale_y_continuous(limits = c(0,1), labels = scales::percent)+
   scale_colour_manual(name="Sample\ntype",values=color_key) + 
   # 
@@ -206,45 +116,38 @@ small_sample_scatter <- wide_results %>%
   #                     labels =c("Adult", 
   #                               "Larval")) +
   labs(x = "Resistance allele frequency", y = "Modeled bioassay survival") +
-  theme_bw() +
-  facet_wrap(~n)
+  theme_bw()
 
-small_sample_scatter
-
-ggsave(small_sample_scatter, file=paste0("output/scatter_two_samplesizes.png"), 
-       unit="in", width = 8.6, height = 4)
-ggsave(small_sample_scatter, file=paste0("output/scatter_two_samplesizes.tiff"), 
-       unit="in", width = 8.6, height = 4)
-
+comparison_scatter
 
 ################################################################################
 ## paper figures: Fig 3B (difference scatter plot)
 ################################################################################
-difference_data <- summarized_data %>% filter(n == 100)
-difference.lm = lm(survival_difference ~ corrected_adult_survival, 
+difference_data <- summary_data
+difference.lm = lm(mean_survival_difference ~ mean_adult_resistance, 
                    data=difference_data)
 # difference_r.squared <- summary(difference.lm)$r.squared  
 
-difference_data$corrected_adult_survival2 = difference_data$corrected_adult_survival**2
-difference.lm_quad = lm(survival_difference ~ 
-                          corrected_adult_survival + corrected_adult_survival2, 
+difference_data$mean_adult_resistance2 = difference_data$mean_adult_resistance**2
+difference.lm_quad = lm(mean_survival_difference ~ 
+                          mean_adult_resistance + mean_adult_resistance2, 
                         data=difference_data)
 # difference_r.squared_quad <- summary(difference.lm_quad)$r.squared  
 
 difference_scatter_quad <- difference_data %>%
   ungroup() %>%
-  slice_sample(n = round(nrow(summary_data)/50), replace = FALSE) %>%
+  slice_sample(n = round(nrow(summary_data)/10), replace = FALSE) %>%
   mutate(predicted_resistance = difference.lm_quad$coefficients["(Intercept)"] 
-         + difference.lm_quad$coefficients["corrected_adult_survival"]*corrected_adult_survival 
-         + difference.lm_quad$coefficients["corrected_adult_survival2"]*corrected_adult_survival2) %>%
+         + difference.lm_quad$coefficients["mean_adult_resistance"]*mean_adult_resistance 
+         + difference.lm_quad$coefficients["mean_adult_resistance2"]*mean_adult_resistance2) %>%
   ggplot()+
-  geom_point(aes(x=corrected_adult_survival, y=-survival_difference), 
+  geom_point(aes(x=mean_adult_resistance, y=-mean_survival_difference), 
              color="#73D055FF", alpha = 0.3) + 
-  geom_line(aes(x=corrected_adult_survival, y=-predicted_resistance), size=1)+
-  # scale_x_continuous(limits=c(0,1), name = "Modeled adult capture bioassay survival", 
-  #                    breaks = c(0:10/10), labels = scales::percent)+
+  geom_line(aes(x=mean_adult_resistance, y=-predicted_resistance), linewidth=1)+
   scale_y_continuous(name = "Assay adjustment", minor_breaks = c(15:-6)/100, 
                      labels = scales::percent)+
+  scale_x_continuous(name = "Modeled Adult-capture bioassay survival",
+                     limits=c(0,1), labels = scales::percent, breaks = seq(0, 1, by = .2))+
   theme_bw() + 
   theme(panel.grid.major.x = element_line(colour = "black", size = 0.1)) +
   geom_hline(yintercept=0, size=0.5)
@@ -256,8 +159,56 @@ scatterplots <- ggpubr::ggarrange(comparison_scatter,
                                   widths = c(1.15,1), labels = "AUTO")
 scatterplots
 
-ggsave(scatterplots, file="output/scatterplots_test.png", unit="in", width = 9.6, height = 4)
-ggsave(scatterplots, file="output/scatterplots_test.tiff", unit="in", width = 9.6, height = 4)
+ggsave(scatterplots, file="output/scatterplot_fig3.png", unit="cm", width = 20, height = 8)
+ggsave(scatterplots, file="output/scatterplot_fig3.tiff", unit="cm", width = 20, height = 4)
+
+################################################################################
+## paper figures: Alt Fig 3B (difference scatter plot)
+################################################################################
+
+difference_data <- summary_data
+difference.lm = lm(mean_survival_difference ~ mean_adult_resistance, 
+                   data=difference_data)
+# difference_r.squared <- summary(difference.lm)$r.squared  
+
+difference_data$mean_adult_resistance2 = difference_data$mean_adult_resistance**2
+difference.lm_quad = lm(mean_survival_difference ~ 
+                          mean_adult_resistance + mean_adult_resistance2, 
+                        data=difference_data)
+# difference_r.squared_quad <- summary(difference.lm_quad)$r.squared  
+
+## make fake dataframe so i can apply this to range from 0 to 20%
+curve_df <- data_frame(resistance = seq(0, 1, by = 0.01)) %>%
+  mutate(resistance_adjustment = -(difference.lm_quad$coefficients["(Intercept)"] 
+         + difference.lm_quad$coefficients["mean_adult_resistance"]*resistance 
+         + difference.lm_quad$coefficients["mean_adult_resistance2"]*(resistance**2)))
+
+difference_scatter <- difference_data %>%
+  ungroup() %>%
+  slice_sample(n = round(nrow(summary_data)/10), replace = FALSE) %>%
+  mutate(predicted_resistance = difference.lm_quad$coefficients["(Intercept)"] 
+         + difference.lm_quad$coefficients["mean_adult_resistance"]*mean_adult_resistance 
+         + difference.lm_quad$coefficients["mean_adult_resistance2"]*mean_adult_resistance2) %>%
+  ggplot()+
+  geom_point(aes(x=mean_adult_resistance, y=-mean_survival_difference), 
+             color="#73D055FF", alpha = 0.3) + 
+  geom_line(data = curve_df,
+            aes(x=resistance, y=resistance_adjustment), linewidth=1)+
+  scale_x_continuous(name = "Modeled adult-capture bioassay survival",
+                     limits=c(0,1), labels = scales::percent, breaks = c(0:10/10))+
+  scale_y_continuous(name = "Assay adjustment", minor_breaks = c(15:-6)/100, 
+                     labels = scales::percent)+
+  theme_bw() + 
+  theme(panel.grid.major.x = element_line(colour = "black", size = 0.1)) +
+  geom_hline(yintercept=0, size=0.5)
+
+scatterplots_alt <- ggpubr::ggarrange(comparison_scatter, 
+                                  difference_scatter, 
+                                  widths = c(1.15,1), labels = "AUTO")
+scatterplots_alt
+
+ggsave(scatterplots_alt, file="output/scatterplot_fig3_alt.png", unit="cm", width = 20, height = 8)
+ggsave(scatterplots_alt, file="output/scatterplot_fig3_alt.tiff", unit="cm", width = 20, height = 8)
 
 
 ################################################################################
@@ -266,8 +217,9 @@ ggsave(scatterplots, file="output/scatterplots_test.tiff", unit="in", width = 9.
 
 ## see file "sensitivity_analyses.R"
 
+
 #################################################################################
-##### SUPPLEMENTAL FIGURES
+##### SUPPLEMENTARY FIGURES
 #################################################################################
 
 #################################################################################
@@ -319,7 +271,7 @@ ggsave("mortality_plot.png", mortality_plots, unit="in", width = 7, height = 3.5
 
 
 #################################################################################
-## plot true probability of exposure by spatial coefficient, coverage
+## Figure S3: true probability of exposure by spatial coefficient, coverage
 #################################################################################
 
 equilibrium_data <- pop_data_baseline %>%
@@ -359,7 +311,7 @@ ggsave(exposure_plot, file="exposure_plot.tiff", unit="in", width = 7.8, height 
 
 
 ################################################################################
-##### paper figures: heatmap of time to 50% resistance
+##### Figure S5: heatmap of time to 50% resistance
 ################################################################################
 
 time_to_resistance <- pop_data_baseline %>% 
@@ -395,5 +347,38 @@ time_to_resistance %>%
         axis.line = element_blank(),
         legend.key.height = unit(1, "cm"))
 
-ggsave(file=paste0("output/time_to_resistance.tiff"), unit="in", width = 6, height = 3.7)
-ggsave(file=paste0("output/time_to_resistance.png"), unit="in", width = 6, height = 3.7)
+ggsave(file=paste0("output/time_to_resistance.tiff"), unit="in", width = 5, height = 3.7)
+ggsave(file=paste0("output/time_to_resistance.png"), unit="in", width = 5, height = 3.7)
+
+################################################################################
+##### Figure S6: heatmap of time to 50% resistance
+################################################################################
+
+small_sample_scatter <- wide_results %>%
+  group_by(n, coverage, spatial_coefficient) %>%
+  slice_sample(n = round(nrow(wide_results)/200000)) %>%
+  mutate(n = paste0("Number sampled in each group = ", n)) %>%
+  group_by(n) %>%
+  ggplot()+
+  geom_abline(intercept=0, slope=1, color="grey")+
+  geom_point(aes(x=resistance, y=adult_resistance, color = "Adult"),
+             size = 0.9, alpha = 0.3) +
+  geom_point(aes(x=resistance, y=larval_resistance, color = "Larval"), 
+             size = 0.9, alpha = 0.3) + 
+  geom_smooth(aes(x=resistance, y=adult_resistance), method = "lm",
+              se = FALSE, color = "black", size=1) +  #se = FALSE, 
+  geom_smooth(aes(x=resistance, y=larval_resistance), method = "lm",
+              se = FALSE, color = "black", size=1) + 
+  scale_x_continuous(limits=c(0,1), labels = scales::percent, breaks = c(0:10/10))+
+  scale_y_continuous(limits = c(0,1), labels = scales::percent)+
+  scale_colour_manual(name="Sample\ntype",values=color_key) + 
+  labs(x = "Resistance allele frequency", y = "Modeled bioassay survival") +
+  theme_bw() +
+  facet_wrap(~n)
+
+small_sample_scatter
+
+ggsave(small_sample_scatter, file=paste0("output/scatter_two_samplesizes.png"), 
+       unit="in", width = 8.6, height = 4)
+ggsave(small_sample_scatter, file=paste0("output/scatter_two_samplesizes.tiff"), 
+       unit="in", width = 8.6, height = 4)
