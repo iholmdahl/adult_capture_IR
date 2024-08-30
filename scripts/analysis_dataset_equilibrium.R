@@ -5,54 +5,43 @@ pop_data_baseline <- readRDS("results/population_main.rds")
 source("scripts/sampling_functions.R")
 
 # ###########################################################################
-# ## sample from between 1 and 99 percent resistance
+# ## sample from equilibrium
 # ##########################################################################
 
-## restrict distinct data to when RR% <= 99, at least 1 year after initiation
-
-low_R_sample <- pop_data_baseline %>% 
-  filter(day>365) %>%
+## restrict to a single day at equilibrium (second to last day in simulation)
+equilibrium_population <- pop_data_baseline %>% 
+  filter(day == (365*25)) %>%
   mutate(resistance = (0.5*SR_POP + RR_POP)/POP) %>%
-  filter(resistance >= 0.01 & resistance <= 0.99) %>%
-  group_by(spatial_coefficient, coverage) %>%
-  slice_sample(n=100, replace=TRUE)
-
+  group_by(spatial_coefficient, coverage)
   
 ## then run sampling functions and conduct adult and larval capture sampling on each of these days
+assay_results_eq <- NULL
+control_results_eq <- NULL
 
-assay_results <- NULL
-control_results <- NULL
-
-for(i in 1:nrow(low_R_sample)){
+for(i in 1:nrow(equilibrium_population)){
   
-  working_data <- low_R_sample[i,]
+  working_data <- equilibrium_population[i,]
   c <- working_data$coverage
   s <- working_data$spatial_coefficient
   
-  assay_results <- bind_rows(assay_results, c(resistance.assay(sample.type="adult", c, 50, 100, working_data), n = 50))
-  control_results <- bind_rows(control_results, c(control.assay(sample.type="adult", c, 50, 100, working_data), n = 50))
+  assay_results_eq <- bind_rows(assay_results_eq, c(resistance.assay(sample.type="adult", c, 100, 1000, working_data), n = 100))
+  control_results_eq <- bind_rows(control_results_eq, c(control.assay(sample.type="adult", c, 100, 1000, working_data), n = 100))
   
-  assay_results <- bind_rows(assay_results, c(resistance.assay(sample.type="larval", c, 50, 100, working_data), n = 50))
-  control_results <- bind_rows(control_results, c(control.assay(sample.type="larval", c, 50, 100, working_data), n = 50))
-  
-  assay_results <- bind_rows(assay_results, c(resistance.assay(sample.type="adult", c, 100, 100, working_data), n = 100))
-  control_results <- bind_rows(control_results, c(control.assay(sample.type="adult", c, 100, 100, working_data), n = 100))
-  
-  assay_results <- bind_rows(assay_results, c(resistance.assay(sample.type="larval", c, 100, 100, working_data), n = 100))
-  control_results <- bind_rows(control_results, c(control.assay(sample.type="larval", c, 100, 100, working_data), n = 100))
+  assay_results_eq <- bind_rows(assay_results_eq, c(resistance.assay(sample.type="larval", c, 100, 1000, working_data), n = 100))
+  control_results_eq <- bind_rows(control_results_eq, c(control.assay(sample.type="larval", c, 100, 1000, working_data), n = 100))
 }
 
-readr::write_csv(assay_results, "output/assay_results.csv")
-readr::write_csv(control_results, "output/control_results.csv")
+readr::write_csv(assay_results_eq, "output/assay_results_eq.csv")
+readr::write_csv(control_results_eq, "output/control_results_eq.csv")
 
 
 ## group_by coverage, spatial_structure, sample type, and n() to summarize mean, variance for each "sampling day"
-assay_results_cleaned <- assay_results %>%
+assay_results_eq_cleaned <- assay_results_eq %>%
   rename(test_survival = survival) %>%
   rowid_to_column() %>%
   select(-c(test))
 
-control_results_cleaned <- control_results %>%
+control_results_eq_cleaned <- control_results_eq %>%
   rename(control_survival = survival) %>%
   rowid_to_column() %>%
   select(-c(test))
@@ -60,8 +49,8 @@ control_results_cleaned <- control_results %>%
 
 ## each line in the "full results" table is a single assay, drawn with `n` mosquitoes in each group, with a single 
 ## `coverage` and `spatial coefficient`, and a given `sample` type (either adult or larval)
-full_results <- full_join(control_results_cleaned,
-                          assay_results_cleaned,
+full_results <- full_join(control_results_eq_cleaned,
+                          assay_results_eq_cleaned,
                           by = c("rowid",
                                  "sample",
                                  "coverage",
@@ -75,8 +64,8 @@ full_results$corrected_survival <- mapply(control.adjustment,
                                           100*full_results$test_survival, 
                                           100*full_results$control_survival)/100
 
-readr::write_csv(full_results, "output/full_results.csv")
-full_results <- readr::read_csv("output/full_results.csv")
+readr::write_csv(full_results, "output/full_results_equilibrium.csv")
+full_results <- readr::read_csv("output/full_results_equilibrium.csv")
 
 ## write a summary - each line gives the mean test survival, control survival, and observed
 ## resistance for a given coverage / sample / spatial coefficient / resistance level
@@ -117,10 +106,9 @@ wide_results <- full_join(temp, temp2, by = c("coverage",
          adult_error = adult_resistance - resistance, 
          larval_error = larval_resistance - resistance)
 
-readr::write_csv(wide_results, "output/wide_results.csv")
+readr::write_csv(wide_results, "output/wide_results_equilibrium.csv")
 
 summary_data <- wide_results %>%
-  filter(n == 100) %>%
   group_by(spatial_coefficient, coverage, resistance) %>%
   summarise(mean_adult_resistance = mean(adult_resistance),
             mean_larval_resistance = mean(larval_resistance),
@@ -128,5 +116,4 @@ summary_data <- wide_results %>%
   mutate(mean_adult_error = mean_adult_resistance - resistance, 
          mean_larval_error = mean_larval_resistance - resistance)
 
-readr::write_csv(summary_data, "output/summary_data.csv")
-
+readr::write_csv(summary_data, "output/summary_data_equilibrium.csv")
