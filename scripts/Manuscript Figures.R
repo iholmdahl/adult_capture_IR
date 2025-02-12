@@ -12,7 +12,7 @@ summary_data <- readr::read_csv("output/summary_data.csv")
 equilibrium_summary_data <- readr::read_csv("output/summary_data_equilibrium.csv")
 
 ## resistance sampling results: sensitivity analyses
-sensitivity_curves <- read_csv("output/sensitivity_analysis_data.csv")
+sensitivity_curves <- readr::read_csv("output/sensitivity_analysis_data.csv")
 
 source("scripts/sampling_functions.R")
 
@@ -255,21 +255,15 @@ ggsave("output/figures/supplement_mortality_plot.tiff", mortality_plots, unit="i
 equilibrium_data <- pop_data_baseline %>%
   group_by(coverage, spatial_coefficient) %>%
   filter(day==365) %>% #|day==max(day)-2|day==max(day)-3|day==max(day)-4)
-  filter(spatial_coefficient %in% c(seq(0,10,2)/10))
+  filter(spatial_coefficient %in% c(seq(0,10,2)/10)) |> 
+  mutate(time = "A) 1 year after resistance emergence")
   
-equilibrium_data %>% 
-  ggplot() +
-  geom_line(aes(x=coverage, y=pr_exposed, color=factor(spatial_coefficient)))+
-  theme_bw() + 
-  ylim(0,1) + 
-  xlim(0,1) + 
-  labs(color="Spatial \nclustering", x = "Coverage", 
-       y = "Proportion feeding \nmosquitoes exposed per day") -> exposure_plot_1
-
 equilibrium_data <- pop_data_baseline %>%
   group_by(coverage, spatial_coefficient) %>%
   filter(day==365*25)  %>% #|day==max(day)-2|day==max(day)-3|day==max(day)-4)
-  filter(spatial_coefficient %in% c(seq(0,10,2)/10))
+  filter(spatial_coefficient %in% c(seq(0,10,2)/10)) |>
+  mutate(time = "B) At resistance equilibrium") |>
+  bind_rows(equilibrium_data)
 
 equilibrium_data %>% 
   ggplot() +
@@ -277,16 +271,13 @@ equilibrium_data %>%
   theme_bw() + 
   ylim(0,1) + 
   xlim(0,1) + 
-  labs(color="Spatial \nclustering", x = "Coverage", 
-       y = "Proportion feeding \nmosquitoes exposed per day") -> exposure_plot_25
+  labs(color="Heterogeneity \nparameter", x = "Coverage", 
+       y = "Proportion feeding \nmosquitoes exposed per day") +
+  facet_wrap(~time) -> exposure_plot
 
-
-exposure_plot <- ggpubr::ggarrange(exposure_plot_1, 
-                                   exposure_plot_25, 
-                                   ncol=2, labels = "AUTO")
 exposure_plot
-ggsave(exposure_plot, file="output/figures/supplement_exposure_plot.png", unit="in", width = 7.8, height = 3)
-ggsave(exposure_plot, file="output/figures/supplement_exposure_plot.tiff", unit="in", width = 7.8, height = 3)
+ggsave(exposure_plot, file="output/figures/supplement_exposure_plot.png", unit="in", width = 7.8, height = 3.5)
+ggsave(exposure_plot, file="output/figures/supplement_exposure_plot.tiff", unit="in", width = 7.8, height = 3.5)
 
 ################################################################################
 ##### Figure S5: heatmap of time to 50% resistance
@@ -309,7 +300,7 @@ time_to_resistance_plot <- time_to_resistance %>%
   geom_tile(data = background, 
             aes(x=spatial_coefficient, y=coverage), fill="grey") +
   geom_tile(aes(x=spatial_coefficient, y=coverage, fill=sqrt(day/365))) +
-  scale_x_continuous(name="Spatial clustering", breaks = c(0:10)/10) +
+  scale_x_continuous(name="Exposure Heterogeneity", breaks = c(0:10)/10) +
   scale_y_continuous(name="Coverage", limits=c(0.025, 0.975), breaks = c(1:9)/10, 
                      labels = scales::percent)+
   scale_fill_viridis_c(name="Years to 50%\nresistance", option="D", 
