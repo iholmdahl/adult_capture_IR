@@ -14,7 +14,7 @@ cov <- c
 ## set run time
 days <- 10000
 
-mortality <- read.csv( file="mortality.csv", header=TRUE, sep=',')
+mortality <- read.csv("input/mortality.csv", header=TRUE, sep=',')
 
 ## set coverage
 coverage_denom <- 20
@@ -905,6 +905,6 @@ for (s in seq(0,1,by=0.1)){   ## s is "spatial clustering coefficient"
     add_column("spatial_coefficient"=s) %>%
     bind_rows(pop_master) -> pop_master
   
-  write.csv(pop_master, paste0("_spatial_",s,"_coverage_",cov/coverage_denom,"_baseline.csv"))
+  write.csv(pop_master, paste0("results/spatial_",s,"_coverage_",cov/coverage_denom,"_baseline.csv"))
   
 }
